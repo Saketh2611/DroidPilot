@@ -15,19 +15,19 @@ DroidPilot is a Python CLI for AI-assisted Android automation. It listens to nat
 
 ```mermaid
 flowchart TD
-    A[User query<br/>"open Chrome and search for saketh"] --> B[CLI / Shell]
-    B --> C[Goal normalization]
-    C --> D[Device state observation<br/>uiautomator2 + ADB]
-    D --> E[Structured UI state<br/>DeviceState / UIElement]
-    E --> F[Gemini planner<br/>google.genai]
-    F --> G[Action schema<br/>tap / type / press / swipe / ...]
-    G --> H[Validator]
-    H --> I[Action executor]
-    I --> J[Android device<br/>tap, type, press, launch, swipe]
-    J --> K[Updated UI state]
+    A["User query<br/>open Chrome and search for saketh"] --> B["CLI / Shell"]
+    B --> C["Goal normalization"]
+    C --> D["Device state observation<br/>uiautomator2 + ADB"]
+    D --> E["Structured UI state<br/>DeviceState / UIElement"]
+    E --> F["Gemini planner<br/>google.genai"]
+    F --> G["Action schema<br/>tap / type / press / swipe / ..."]
+    G --> H["Validator"]
+    H --> I["Action executor"]
+    I --> J["Android device<br/>tap, type, press, launch, swipe"]
+    J --> K["Updated UI state"]
     K --> F
 
-    F -. fallback .-> L[Deterministic mock agent]
+    F -. fallback .-> L["Deterministic mock agent"]
 ```
 
 The execution loop is intentionally layered so the model never executes raw shell commands directly; it only produces structured actions that are validated before running on the device.
@@ -269,6 +269,7 @@ adb devices
 ```
 
 Make sure:
+
 - USB debugging is enabled
 - the device is trusted
 - ADB is installed and on `PATH`
@@ -284,38 +285,3 @@ Make sure:
 The app normalizes common output variants before validation. If the model still returns an invalid form, inspect the payload and adjust the prompt or tool contract.
 
 ---
-
-## Additional docs
-
-See [LLM_DOC.txt](LLM_DOC.txt) for the model contract and Gemini setup notes.
-
----
-
-## Troubleshooting
-
-### Device not detected
-
-```bash
-adb devices
-```
-
-Make sure:
-- USB debugging is enabled
-- the device is trusted
-- ADB is installed and on `PATH`
-
-### UI element not found
-
-- refresh the screen state
-- inspect current hierarchy
-- ensure the target element is visible and enabled
-
-### LLM returns wrong schema
-
-The app normalizes common output variants before validation. If the model still returns an invalid form, inspect the payload and adjust the prompt or tool contract.
-
----
-
-## Additional docs
-
-See [LLM_DOC.txt](LLM_DOC.txt) for the model contract and Gemini setup notes.
