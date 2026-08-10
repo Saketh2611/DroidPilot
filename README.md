@@ -1,10 +1,67 @@
 # DroidPilot
 
-DroidPilot is a Python CLI for AI-assisted Android device automation over USB/ADB and uiautomator2.
+DroidPilot is a Python CLI for AI-assisted Android automation. It listens to natural-language instructions from the shell or CLI, turns them into a structured action plan, validates each action, and executes it on a connected Android device over ADB and uiautomator2.
+
+## What DroidPilot does
+
+- Accepts user goals such as: `run "open Chrome and search for saketh"`
+- Observes the current Android UI state
+- Uses a planner agent (Gemini by default) to choose the next action
+- Validates the action against a typed schema
+- Executes the action on the phone
+- Repeats until the goal is complete or a limit is reached
+
+## Architecture: from user query to task execution
+
+```mermaid
+flowchart TD
+    A[User query<br/>"open Chrome and search for saketh"] --> B[CLI / Shell]
+    B --> C[Goal normalization]
+    C --> D[Device state observation<br/>uiautomator2 + ADB]
+    D --> E[Structured UI state<br/>DeviceState / UIElement]
+    E --> F[Gemini planner<br/>google.genai]
+    F --> G[Action schema<br/>tap / type / press / swipe / ...]
+    G --> H[Validator]
+    H --> I[Action executor]
+    I --> J[Android device<br/>tap, type, press, launch, swipe]
+    J --> K[Updated UI state]
+    K --> F
+
+    F -. fallback .-> L[Deterministic mock agent]
+```
+
+The execution loop is intentionally layered so the model never executes raw shell commands directly; it only produces structured actions that are validated before running on the device.
+
+---
+
+## Project layout
+
+```text
+DroidPilot/
+├── src/
+│   └── droidpilot/
+│       ├── actions/
+│       ├── agent/
+│       ├── device/
+│       ├── cli.py
+│       ├── client.py
+│       ├── config.py
+│       ├── state/
+│       └── __init__.py
+├── tests/
+├── .env.example
+├── README.md
+├── requirements.txt
+├── pyproject.toml
+├── LLM_DOC.txt
+└── main.py
+```
+
+---
 
 ## Installation
 
-1. Clone the project:
+1. Clone the repository:
 
 ```bash
 git clone <repo-url>
@@ -18,24 +75,27 @@ python -m venv .venv
 .venv\Scripts\activate
 ```
 
-3. Install the project in editable mode:
+3. Install dependencies:
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
 ```
 
-## Install ADB
+---
 
-ADB is required to communicate with the Android device.
+## Install and configure ADB
+
+ADB is required for communication between the PC and the Android device.
 
 ### Windows
 
-1. Install Android Studio or the standalone Android SDK Platform Tools.
-2. Add the platform-tools folder to your PATH.
-3. Verify installation:
+1. Install Android Studio or Android SDK Platform Tools.
+2. Add the `platform-tools` directory to your `PATH`.
+3. Verify:
 
 ```bash
 adb version
+adb devices
 ```
 
 ### macOS
@@ -51,38 +111,84 @@ sudo apt update
 sudo apt install android-tools-adb
 ```
 
-After installation, verify ADB is available:
+---
+
+## Android developer setup
+
+1. On the Android device, enable Developer options.
+2. Go to Settings > About phone.
+3. Tap Build number 7 times.
+4. Enable USB debugging under Settings > System > Developer options.
+5. Connect the phone with USB and approve the debug prompt if shown.
+
+Verify the device is visible:
 
 ```bash
 adb devices
 ```
 
-## Android developer-mode setup
+---
 
-1. Enable Developer options on the Android device.
-2. Open Settings > About phone.
-3. Tap Build number 7 times until Developer options unlock.
+## Environment configuration
 
-## USB debugging setup
+Create a `.env` file in the project root:
 
-1. Go to Settings > System > Developer options.
-2. Enable USB debugging.
-3. Connect the phone to the computer with a USB cable.
-4. Allow USB debugging when prompted on the device.
-5. Confirm the device is visible:
-
-```bash
-adb devices
+```env
+GOOGLE_API_KEY=your_google_api_key_here
+GEMINI_MODEL=gemini-3.5-flash
+DROIDPILOT_PROVIDER=gemini
+DROIDPILOT_MAX_STEPS=20
+DROIDPILOT_SCREENSHOT_DIR=./screenshots
 ```
 
-## Connecting a device
+The application reads these values through `pydantic-settings`.
+
+---
+
+## LLM setup
+
+DroidPilot uses the supported Google GenAI SDK:
+
+- `google.genai`
+- not the deprecated `google.generativeai`
+
+The model is expected to return a JSON action payload such as:
+
+```json
+{
+  "type": "tap",
+  "element_id": 153
+}
+```
+
+or:
+
+```json
+{
+  "type": "type",
+  "text": "saketh"
+}
+```
+
+The app also accepts compatibility variants like `{"action": "tap", ...}` before validation.
+
+---
+
+## Running DroidPilot
+
+### List connected devices
 
 ```bash
 droidpilot devices
+```
+
+### Connect to a device
+
+```bash
 droidpilot connect
 ```
 
-## Basic commands
+### Basic commands
 
 ```bash
 droidpilot screenshot
@@ -97,15 +203,13 @@ droidpilot history
 droidpilot code
 ```
 
-## Interactive shell
+### Interactive shell
 
 ```bash
 droidpilot shell
 ```
 
-The shell accepts either explicit commands or natural-language prompts.
-
-Examples:
+Example shell inputs:
 
 ```text
 DroidPilot > devices
@@ -118,67 +222,100 @@ DroidPilot > run "open Chrome and search for saketh"
 DroidPilot > go to Google and type saketh
 ```
 
-Natural-language prompts are routed through the agent loop. If no LLM API key is configured, the shell falls back to the built-in deterministic mock agent.
+If no API key is configured, the app falls back to the deterministic mock agent instead of failing.
 
-## Agent architecture
+---
 
-The architecture separates the UI automation layer from the agent layer:
+## Execution flow in detail
 
-- CLI
-- Agent / planner
-- Action schema and validator
-- Action executor
-- Android adapter
-- Device state observation
+1. The user enters a natural-language goal.
+2. The CLI or shell forwards it into the client.
+3. The agent observes the current Android state.
+4. The planner emits a structured action.
+5. The validator enforces the action schema.
+6. The executor performs the actual UI operation.
+7. The device state refreshes and the loop continues.
 
-The current default agent is deterministic mock logic; an LLM/VLM agent can be added later without changing the executor or Android adapter.
+This pattern makes it easy to swap out the planner without changing the automation execution layer.
 
-## Example session
+---
 
-```text
-DroidPilot > open chrome
-DroidPilot > tap "Chrome"
-DroidPilot > type "iQOO"
-DroidPilot > press enter
-DroidPilot > screenshot
-```
+## Supported action types
 
-## Configuration
+- `tap`
+- `type`
+- `press`
+- `launch_app`
+- `swipe`
+- `scroll`
+- `home`
+- `back`
+- `wait`
 
-You can configure the provider and behavior through environment variables or by creating a `.env` file.
+---
 
-Example:
+## Safety boundary
 
-```env
-GROQ_API_KEY=your_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-DROIDPILOT_PROVIDER=groq
-DROIDPILOT_MAX_STEPS=20
-DROIDPILOT_SCREENSHOT_DIR=./screenshots
-```
+The LLM does not execute raw shell commands. It only produces validated, typed actions such as `tap`, `type`, or `scroll`. Those actions are then executed via the Android adapter after validation.
+
+---
+
+## Troubleshooting
+
+### Device not detected
 
 ```bash
-droidpilot config
+adb devices
 ```
 
-## LLM provider setup
+Make sure:
+- USB debugging is enabled
+- the device is trusted
+- ADB is installed and on `PATH`
 
-The CLI can use a Groq-backed LLM agent when configured.
+### UI element not found
 
-1. Add your API key in a `.env` file.
-2. Set `DROIDPILOT_PROVIDER=groq`.
-3. Optionally override the model with `GROQ_MODEL`.
-4. Start the CLI with `droidpilot shell` or `droidpilot run "..."`.
+- refresh the screen state
+- inspect current hierarchy
+- ensure the target element is visible and enabled
 
-Example:
+### LLM returns wrong schema
 
-```env
-GROQ_API_KEY=your_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-DROIDPILOT_PROVIDER=groq
-DROIDPILOT_MAX_STEPS=20
+The app normalizes common output variants before validation. If the model still returns an invalid form, inspect the payload and adjust the prompt or tool contract.
+
+---
+
+## Additional docs
+
+See [LLM_DOC.txt](LLM_DOC.txt) for the model contract and Gemini setup notes.
+
+---
+
+## Troubleshooting
+
+### Device not detected
+
+```bash
+adb devices
 ```
 
-If no key is configured, DroidPilot automatically falls back to the deterministic mock agent, which keeps the CLI working without an LLM.
+Make sure:
+- USB debugging is enabled
+- the device is trusted
+- ADB is installed and on `PATH`
 
-This preserves the safety boundary: the model never executes raw shell commands.
+### UI element not found
+
+- refresh the screen state
+- inspect current hierarchy
+- ensure the target element is visible and enabled
+
+### LLM returns wrong schema
+
+The app normalizes common output variants before validation. If the model still returns an invalid form, inspect the payload and adjust the prompt or tool contract.
+
+---
+
+## Additional docs
+
+See [LLM_DOC.txt](LLM_DOC.txt) for the model contract and Gemini setup notes.
