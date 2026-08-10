@@ -1,0 +1,199 @@
+Metadata-Version: 2.4
+Name: droidpilot
+Version: 0.1.0
+Summary: CLI for AI-assisted Android device automation via ADB and uiautomator2
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: uiautomator2>=3.0.0
+Requires-Dist: pydantic>=2.7.0
+Requires-Dist: pydantic-settings>=2.4.0
+Requires-Dist: typer>=0.12.0
+Requires-Dist: rich>=13.7.0
+Requires-Dist: google-genai>=1.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
+# DroidPilot
+
+DroidPilot is a Python CLI for AI-assisted Android device automation over USB/ADB and uiautomator2.
+
+## Installation
+
+1. Clone the project:
+
+```bash
+git clone <repo-url>
+cd DroidPilot
+```
+
+2. Create and activate a virtual environment:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+3. Install the project in editable mode:
+
+```bash
+pip install -e .
+```
+
+## Install ADB
+
+ADB is required to communicate with the Android device.
+
+### Windows
+
+1. Install Android Studio or the standalone Android SDK Platform Tools.
+2. Add the platform-tools folder to your PATH.
+3. Verify installation:
+
+```bash
+adb version
+```
+
+### macOS
+
+```bash
+brew install android-platform-tools
+```
+
+### Linux
+
+```bash
+sudo apt update
+sudo apt install android-tools-adb
+```
+
+After installation, verify ADB is available:
+
+```bash
+adb devices
+```
+
+## Android developer-mode setup
+
+1. Enable Developer options on the Android device.
+2. Open Settings > About phone.
+3. Tap Build number 7 times until Developer options unlock.
+
+## USB debugging setup
+
+1. Go to Settings > System > Developer options.
+2. Enable USB debugging.
+3. Connect the phone to the computer with a USB cable.
+4. Allow USB debugging when prompted on the device.
+5. Confirm the device is visible:
+
+```bash
+adb devices
+```
+
+## Connecting a device
+
+```bash
+droidpilot devices
+droidpilot connect
+```
+
+## Basic commands
+
+```bash
+droidpilot screenshot
+droidpilot inspect
+droidpilot open chrome
+droidpilot tap "Chrome"
+droidpilot type "iQOO"
+droidpilot press enter
+droidpilot press home
+droidpilot press back
+droidpilot history
+droidpilot code
+```
+
+## Interactive shell
+
+```bash
+droidpilot shell
+```
+
+The shell accepts either explicit commands or natural-language prompts.
+
+Examples:
+
+```text
+DroidPilot > devices
+DroidPilot > inspect
+DroidPilot > tap "Chrome"
+DroidPilot > type "iQOO"
+DroidPilot > press enter
+DroidPilot > screenshot
+DroidPilot > run "open Chrome and search for saketh"
+DroidPilot > go to Google and type saketh
+```
+
+Natural-language prompts are routed through the agent loop. If no LLM API key is configured, the shell falls back to the built-in deterministic mock agent.
+
+## Agent architecture
+
+The architecture separates the UI automation layer from the agent layer:
+
+- CLI
+- Agent / planner
+- Action schema and validator
+- Action executor
+- Android adapter
+- Device state observation
+
+The current default agent is deterministic mock logic; an LLM/VLM agent can be added later without changing the executor or Android adapter.
+
+## Example session
+
+```text
+DroidPilot > open chrome
+DroidPilot > tap "Chrome"
+DroidPilot > type "iQOO"
+DroidPilot > press enter
+DroidPilot > screenshot
+```
+
+## Configuration
+
+You can configure the provider and behavior through environment variables or by creating a `.env` file.
+
+Example:
+
+```env
+GROQ_API_KEY=your_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+DROIDPILOT_PROVIDER=groq
+DROIDPILOT_MAX_STEPS=20
+DROIDPILOT_SCREENSHOT_DIR=./screenshots
+```
+
+```bash
+droidpilot config
+```
+
+## LLM provider setup
+
+The CLI can use a Groq-backed LLM agent when configured.
+
+1. Add your API key in a `.env` file.
+2. Set `DROIDPILOT_PROVIDER=groq`.
+3. Optionally override the model with `GROQ_MODEL`.
+4. Start the CLI with `droidpilot shell` or `droidpilot run "..."`.
+
+Example:
+
+```env
+GROQ_API_KEY=your_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+DROIDPILOT_PROVIDER=groq
+DROIDPILOT_MAX_STEPS=20
+```
+
+If no key is configured, DroidPilot automatically falls back to the deterministic mock agent, which keeps the CLI working without an LLM.
+
+This preserves the safety boundary: the model never executes raw shell commands.
