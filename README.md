@@ -10,6 +10,7 @@ The LLM never runs raw shell commands. It only returns a **typed JSON action** (
 
 - [What DroidPilot does](#what-droidpilot-does)
 - [Architecture](#architecture)
+- [How the LLM drives the phone](#how-the-llm-drives-the-phone)
 - [Project layout](#project-layout)
 - [Installation](#installation)
 - [ADB and device setup](#adb-and-device-setup)
@@ -103,6 +104,87 @@ Step 5  Observe → search results       Plan → done
 | `device/` | Phone connection via uiautomator2 + ADB |
 | `state/` | `DeviceState` and numbered `UIElement` list |
 | `session/` | History log and Python code export |
+
+---
+
+## How the LLM drives the phone
+
+This section answers two common questions: **does the LLM output get run as ADB commands?** and **do you need a multimodal (vision) model?**
+
+### LLM → JSON → phone (not raw ADB)
+
+The LLM does **not** return shell scripts or raw ADB strings like `adb shell input tap 500 800`. It returns **one structured JSON action per step**. DroidPilot parses that JSON, validates it, and maps it to fixed uiautomator2 calls (which use ADB under the hood).
+
+```text
+User goal
+    ↓
+LLM returns JSON (one step)     e.g. {"type":"tap","element_id":5}
+    ↓
+extract_json_object()           strip markdown / parse JSON
+    ↓
+build_action_from_llm()         → TapAction, TypeAction, …
+    ↓
+ActionValidator                 whitelist + schema check
+    ↓
+ActionExecutor                  tap / type / launch_app / …
+    ↓
+uiautomator2                    device.click(), send_keys(), app_start()
+    ↓
+ADB                             transport to the phone
+    ↓
+Android phone
+```
+
+**Important:** the LLM plans **one action at a time**, not a full task script. For `open Chrome and search for Saketh`, it might return 4–5 JSON actions across several loop iterations — launch app, tap url bar, type text, press enter, then `done`.
+
+| JSON from LLM | What runs on the device |
+|---|---|
+| `{"type":"launch_app","package":"com.android.chrome"}` | `device.app_start(package)` |
+| `{"type":"tap","element_id":5}` | `device.click(x, y)` using cached element bounds |
+| `{"type":"tap","target":{"text":"Chrome"}}` | uiautomator2 selector click by text |
+| `{"type":"type","text":"Saketh"}` | `device.send_keys(text)` |
+| `{"type":"press","key":"enter"}` | `device.press("enter")` |
+| `{"type":"done","reason":"…"}` | Stop the goal loop |
+
+The LLM decides **what** to do next. DroidPilot controls **how** it is executed safely.
+
+### Is a multimodal LLM required?
+
+**No.** DroidPilot today uses a **text-only** planner. You do not need a vision-capable model for the current implementation to work.
+
+Each step, the LLM receives **JSON text** built in `agent/prompts.py`:
+
+- User **goal**
+- **current_package** (which app is open)
+- **device_info**
+- **ui_elements** — flat list from the Android accessibility tree (`text`, `resource_id`, `description`, `bounds`, `clickable`, `element_id`)
+- **recent_actions** — last few steps for context
+
+It does **not** receive the screenshot image, even though `observe()` captures one every step. The screenshot path is stored in `DeviceState` for logging/debugging, but `GeminiAgent` sends only text:
+
+```python
+contents=f"{SYSTEM_PROMPT}\n\n{prompt}"   # text in, JSON out
+```
+
+| Requirement | Needed today? |
+|---|---|
+| Text in → JSON out | **Yes** |
+| Vision / multimodal (image input) | **No** — not used |
+| Good at following structured action schemas | **Yes** |
+
+Any capable **text LLM** (Gemini, Groq/Llama, etc.) that returns valid JSON is enough.
+
+### When would vision (multimodal) help?
+
+Vision is **optional** and **not implemented yet**, but it could improve automation later when:
+
+- Launcher icons have no text labels in the UI tree
+- The accessibility tree is incomplete (games, WebViews, custom canvases)
+- Layout must be inferred visually because XML does not describe it well
+
+Many Gemini models support vision, but DroidPilot currently plans from the **accessibility hierarchy**, not pixels.
+
+**Bottom line:** today it is **LLM + structured UI text → JSON action → uiautomator2/ADB**, not **LLM sees screenshot → action**.
 
 ---
 
