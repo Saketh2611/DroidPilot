@@ -76,34 +76,76 @@ class DroidPilotClient:
         self.history.record(action=validated.model_dump(), result=result)
         return result
 
+    def _build_state(self, raw_state: dict[str, Any]) -> DeviceState:
+        ui_elements = [
+            UIElement(
+                element_id=element.get("element_id", i),
+                text=element.get("text"),
+                resource_id=element.get("resource_id"),
+                description=element.get("description"),
+                class_name=element.get("class_name"),
+                clickable=bool(element.get("clickable")),
+                bounds=tuple(element.get("bounds")) if element.get("bounds") else None,
+                attributes=element.get("attributes", {}),
+            )
+            for i, element in enumerate(raw_state.get("ui_elements", []), start=1)
+        ]
+        return DeviceState(
+            screenshot=raw_state.get("screenshot"),
+            ui_elements=ui_elements,
+            current_package=raw_state.get("current_package"),
+            device_info=raw_state.get("device_info", {}),
+        )
+
+    def _sanitize_action(self, action: ActionModel, state: DeviceState) -> ActionModel:
+        """Rewrite invalid element_id taps into selector taps when possible."""
+        if action.type != "tap" or action.element_id is None:
+            return action
+
+        max_id = len(state.ui_elements)
+        if 1 <= action.element_id <= max_id:
+            return action
+
+        # Out-of-range id from the model: try target fields, otherwise error later.
+        if action.target is not None and any(
+            [
+                action.target.text,
+                action.target.resource_id,
+                action.target.description,
+            ]
+        ):
+            return action.model_copy(update={"element_id": None})
+        raise ValueError(
+            f"Element {action.element_id} does not exist (available: 1-{max_id})"
+        )
+
     def run_goal(self, goal: str, max_steps: int = 20) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
+        recent: list[dict[str, Any]] = []
+
         for _ in range(max_steps):
             raw_state = self.device.observe()
-            ui_elements = [
-                UIElement(
-                    element_id=i,
-                    text=element.get("text"),
-                    resource_id=element.get("resource_id"),
-                    description=element.get("description"),
-                    class_name=element.get("class_name"),
-                    clickable=bool(element.get("clickable")),
-                    bounds=tuple(element.get("bounds")) if element.get("bounds") else None,
-                    attributes=element.get("attributes", {}),
-                )
-                for i, element in enumerate(raw_state.get("ui_elements", []), start=1)
-            ]
-            state = DeviceState(
-                screenshot=raw_state.get("screenshot"),
-                ui_elements=ui_elements,
-                current_package=raw_state.get("current_package"),
-                device_info=raw_state.get("device_info", {}),
-            )
-            action = self.agent.next_action(goal=goal, state=state)
-            validated = self.validator.validate(action)
-            result = self.executor.execute(validated)
+            state = self._build_state(raw_state)
+
+            try:
+                action = self.agent.next_action(goal=goal, state=state, history=recent)
+                validated = self.validator.validate(action)
+                validated = self._sanitize_action(validated, state)
+                result = self.executor.execute(validated)
+            except Exception as exc:
+                result = {"status": "error", "error": str(exc)}
+                self.history.record(action={"type": "error"}, result=result)
+                results.append(result)
+                recent.append({"action": {"type": "error"}, "result": result})
+                # Transient model/device errors should not kill the whole goal loop.
+                if len(recent) >= 3 and all(r.get("result", {}).get("status") == "error" for r in recent[-3:]):
+                    break
+                continue
+
             self.history.record(action=validated.model_dump(), result=result)
             results.append(result)
+            recent.append({"action": validated.model_dump(exclude_none=True), "result": result})
+
             if result.get("status") == "completed":
                 break
         return results

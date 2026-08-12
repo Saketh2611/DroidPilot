@@ -84,6 +84,7 @@ class UIAutomatorDevice(AndroidDevice):
         self.serial = serial
         self.adb = adb or ADBClient()
         self._device: u2.Device | None = None
+        self._last_elements: list[dict[str, Any]] = []
 
     def connect(self, serial: str | None = None) -> dict[str, Any]:
         self.serial = serial or self.serial
@@ -116,13 +117,13 @@ class UIAutomatorDevice(AndroidDevice):
         device = self._ensure_connected()
         hierarchy = device.dump_hierarchy()
         parsed = parse_hierarchy_xml(hierarchy)
+        self._last_elements = parsed
         result: list[dict[str, Any]] = []
         for index, node in enumerate(parsed, start=1):
-            text = node.get("text") or node.get("description") or node.get("resource_id")
             result.append(
                 {
                     "element_id": index,
-                    "text": text,
+                    "text": node.get("text") or "",
                     "resource_id": node.get("resource_id"),
                     "description": node.get("description"),
                     "class_name": node.get("class_name"),
@@ -149,20 +150,52 @@ class UIAutomatorDevice(AndroidDevice):
             return {"status": "success", "target": {"text": text}}
         raise ValueError("No valid tap target was provided")
 
-    def tap_element(self, element_id: int) -> dict[str, Any]:
+    def _click_bounds(self, bounds: tuple[int, int, int, int]) -> None:
         device = self._ensure_connected()
-        elements = parse_hierarchy_xml(device.dump_hierarchy())
-        if element_id < 1 or element_id > len(elements):
-            raise ValueError(f"Element {element_id} does not exist")
-        node = elements[element_id - 1]
+        x1, y1, x2, y2 = bounds
+        device.click((x1 + x2) // 2, (y1 + y2) // 2)
+
+    def tap_element(self, element_id: int) -> dict[str, Any]:
+        """Tap by element_id using the last observed hierarchy when possible.
+
+        Re-dumping the hierarchy after the LLM round-trip often changes element
+        indexing, so prefer the bounds/identity from the observation the agent saw.
+        """
+        device = self._ensure_connected()
+        node: dict[str, Any] | None = None
+
+        if self._last_elements and 1 <= element_id <= len(self._last_elements):
+            node = self._last_elements[element_id - 1]
+        else:
+            elements = parse_hierarchy_xml(device.dump_hierarchy())
+            self._last_elements = elements
+            if element_id < 1 or element_id > len(elements):
+                raise ValueError(
+                    f"Element {element_id} does not exist "
+                    f"(available: 1-{len(elements) if elements else 0})"
+                )
+            node = elements[element_id - 1]
+
         bounds = node.get("bounds")
         if bounds:
-            x1, y1, x2, y2 = bounds
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
-            device.click(center_x, center_y)
+            self._click_bounds(bounds)
             return {"status": "success", "element_id": element_id, "bounds": bounds}
-        raise ValueError(f"Element {element_id} has no usable bounds")
+
+        # Fallback to stable selectors if bounds are missing.
+        resource_id = node.get("resource_id")
+        description = node.get("description")
+        text = (node.get("text") or "").strip()
+        if resource_id:
+            device(resourceId=resource_id).click()
+            return {"status": "success", "element_id": element_id, "resource_id": resource_id}
+        if description:
+            device(description=description).click()
+            return {"status": "success", "element_id": element_id, "description": description}
+        if text:
+            device(text=text).click()
+            return {"status": "success", "element_id": element_id, "text": text}
+
+        raise ValueError(f"Element {element_id} has no usable bounds or selectors")
 
     def type(self, text: str) -> dict[str, Any]:
         device = self._ensure_connected()

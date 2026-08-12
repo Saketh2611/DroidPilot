@@ -174,7 +174,10 @@ def run_goal(goal: str, max_steps: int = 20) -> None:
 @app.command("shell")
 def shell() -> None:
     console.print("[bold]DroidPilot[/bold]")
-    console.print("Type commands or natural-language prompts like: 'run \"open Chrome and search for saketh\"'")
+    console.print(
+        "Type commands or natural-language goals like: "
+        "'open Chrome and search for saketh' or 'open calculator'"
+    )
     while True:
         try:
             cmd = input("DroidPilot > ")
@@ -186,39 +189,52 @@ def shell() -> None:
         if stripped in {"exit", "quit"}:
             break
 
-        normalized = normalize_shell_command(stripped)
-        if normalized.startswith("run "):
-            run_goal(normalized[4:].strip().strip('"').strip("'"))
-            continue
+        try:
+            normalized = normalize_shell_command(stripped)
+            if normalized.startswith("run "):
+                run_goal(normalized[4:].strip().strip('"').strip("'"))
+                continue
 
-        if normalized.lower().startswith("go to ") or normalized.lower().startswith("open ") or " and " in normalized.lower() or "type " in normalized.lower():
-            run_goal(normalized)
-            continue
+            lowered = normalized.lower()
+            if (
+                lowered.startswith("go to ")
+                or lowered.startswith("open ")
+                or " and " in lowered
+                or "type " in lowered
+                or "search" in lowered
+                or "calculator" in lowered
+                or "settings" in lowered
+            ):
+                run_goal(normalized)
+                continue
 
-        parts = stripped.split()
-        if parts[0] == "devices":
-            devices()
-        elif parts[0] == "connect":
-            connect(parts[1] if len(parts) > 1 else None)
-        elif parts[0] == "screenshot":
-            screenshot(parts[1] if len(parts) > 1 else None)
-        elif parts[0] == "inspect":
-            inspect()
-        elif parts[0] == "open":
-            open_app(parts[1] if len(parts) > 1 else "")
-        elif parts[0] == "tap":
-            text = " ".join(parts[1:]) if len(parts) > 1 else None
-            tap(text=text)
-        elif parts[0] == "type":
-            type_text(" ".join(parts[1:]))
-        elif parts[0] == "press":
-            press(parts[1] if len(parts) > 1 else "enter")
-        elif parts[0] == "history":
-            history()
-        elif parts[0] == "code":
-            code()
-        else:
-            console.print(f"Unknown command: {cmd}")
+            parts = stripped.split()
+            if parts[0] == "devices":
+                devices()
+            elif parts[0] == "connect":
+                connect(parts[1] if len(parts) > 1 else None)
+            elif parts[0] == "screenshot":
+                screenshot(parts[1] if len(parts) > 1 else None)
+            elif parts[0] == "inspect":
+                inspect()
+            elif parts[0] == "open":
+                open_app(parts[1] if len(parts) > 1 else "")
+            elif parts[0] == "tap":
+                text = " ".join(parts[1:]) if len(parts) > 1 else None
+                tap(text=text)
+            elif parts[0] == "type":
+                type_text(" ".join(parts[1:]))
+            elif parts[0] == "press":
+                press(parts[1] if len(parts) > 1 else "enter")
+            elif parts[0] == "history":
+                history()
+            elif parts[0] == "code":
+                code()
+            else:
+                # Treat unknown free-form text as a natural-language goal.
+                run_goal(normalized)
+        except Exception as exc:
+            console.print(f"[red]Error:[/red] {exc}")
 
 
 def main() -> None:

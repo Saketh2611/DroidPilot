@@ -19,7 +19,17 @@ class ActionModel(BaseModel):
     @model_validator(mode="after")
     def validate_type(self) -> "ActionModel":
         allowed = {
-            "tap","type","swipe","scroll","press","launch_app","home","back","screenshot","wait"
+            "tap",
+            "type",
+            "swipe",
+            "scroll",
+            "press",
+            "launch_app",
+            "home",
+            "back",
+            "screenshot",
+            "wait",
+            "done",
         }
         if self.type not in allowed:
             raise ValueError(f"Unsupported action type: {self.type}")
@@ -82,6 +92,11 @@ class WaitAction(ActionModel):
     seconds: float = 1.0
 
 
+class DoneAction(ActionModel):
+    type: Literal["done"] = "done"
+    reason: str = "goal completed"
+
+
 ACTION_MODELS = {
     "tap": TapAction,
     "type": TypeAction,
@@ -93,4 +108,5 @@ ACTION_MODELS = {
     "back": BackAction,
     "screenshot": ScreenshotAction,
     "wait": WaitAction,
+    "done": DoneAction,
 }

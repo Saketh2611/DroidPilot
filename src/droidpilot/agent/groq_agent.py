@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 
 from groq import Groq
 
-from ..actions.models import ActionModel, LaunchAppAction, PressAction, TapAction, TypeAction
+from ..agent.action_builder import build_action_from_llm
 from ..agent.base import Agent
+from ..agent.json_utils import extract_json_object
+from ..agent.prompts import SYSTEM_PROMPT, build_user_prompt
 from ..config import settings
 from ..state.models import DeviceState
 
@@ -18,71 +19,46 @@ class GroqAgent(Agent):
         self.model = model or settings.groq_model
         self.client = Groq(api_key=self.api_key) if self.api_key else None
 
-    def next_action(self, goal: str, state: DeviceState):
+    def next_action(self, goal: str, state: DeviceState, history: list[dict[str, Any]] | None = None):
         if not self.api_key or self.client is None:
             raise ValueError("GROQ_API_KEY is not configured")
 
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are DroidPilot. Return only a JSON object with an action schema. "
-                    "Allowed action types: tap, type, press, launch_app, swipe, scroll, home, back, wait. "
-                    "Never output shell commands or raw code."
-                ),
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": json.dumps({
-                    "goal": goal,
-                    "device_info": state.device_info,
-                    "current_package": state.current_package,
-                    "ui_elements": [e.model_dump() for e in state.ui_elements],
-                }),
+                "content": build_user_prompt(goal=goal, state=state, history=history),
             },
         ]
 
-        for attempt in range(3):
+        last_error: Exception | None = None
+        for attempt in range(4):
             try:
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=messages,
                     temperature=0,
-                    max_tokens=2048,
+                    max_tokens=1024,
+                    response_format={"type": "json_object"},
                 )
                 content = response.choices[0].message.content
-                if not content:
-                    raise ValueError("Groq returned empty content")
-                action_data = json.loads(content)
-                return self._build_action(action_data)
+                action_data = extract_json_object(content or "")
+                return build_action_from_llm(action_data)
             except Exception as exc:
+                last_error = exc
                 message = str(exc).lower()
-                should_retry = attempt < 2 and (
+                should_retry = attempt < 3 and (
                     "503" in str(exc)
                     or "unavailable" in message
                     or "rate" in message
                     or "overloaded" in message
+                    or "empty content" in message
+                    or "did not return json" in message
+                    or "expecting value" in message
+                    or "json" in message
                 )
                 if should_retry:
-                    time.sleep(2)
+                    time.sleep(1.5 * (attempt + 1))
                     continue
                 raise
-
-    def _build_action(self, data: dict[str, Any]) -> ActionModel:
-        action_type = data.get("type")
-        if action_type == "launch_app":
-            return LaunchAppAction(package=data["package"]) 
-        if action_type == "tap":
-            target = data.get("target") or {}
-            if "element_id" in target:
-                return TapAction(element_id=int(target["element_id"]))
-            return TapAction(target={"text": target.get("text"), "resource_id": target.get("resource_id")})
-        if action_type == "type":
-            return TypeAction(text=data["text"])
-        if action_type == "press":
-            return PressAction(key=data["key"])
-        if action_type == "swipe":
-            return ActionModel(type="swipe", direction=data["direction"])  # type: ignore[arg-type]
-        if action_type == "scroll":
-            return ActionModel(type="scroll", direction=data["direction"])  # type: ignore[arg-type]
-        raise ValueError(f"Unsupported action type from Groq agent: {action_type}")
+        raise last_error or ValueError("Groq agent failed without a specific error")
