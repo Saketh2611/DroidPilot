@@ -59,20 +59,79 @@ class ActionExecutor:
                 ),
             }
         if action_type == "type":
-            self.device.type(action.text)
+            try:
+                self.device.type(action.text)
+            except Exception as exc:
+                return {"status": "error", "action": action_type, "text": action.text, "error": str(exc)}
             return {"status": "success", "action": action_type, "text": action.text}
         if action_type == "swipe":
-            self.device.swipe(action.direction)
-            return {"status": "success", "action": action_type, "direction": action.direction}
+            try:
+                self.device.swipe(action.direction)
+            except Exception as exc:
+                return {"status": "error", 
+                        "action": action_type, 
+                        "direction": action.direction, 
+                        "error": str(exc)}
+                
+            return {"status": "success", 
+                    "action": action_type, 
+                    "direction": action.direction}
         if action_type == "scroll":
-            self.device.scroll(action.direction)
-            return {"status": "success", "action": action_type, "direction": action.direction}
+            try:
+                self.device.scroll(action.direction)
+            except Exception as exc:
+                return {"status": "error", 
+                        "action": action_type, 
+                        "direction": action.direction, 
+                        "error": str(exc)}
+                
+            return {"status": "success", 
+                    "action": action_type, 
+                    "direction": action.direction}
+        if action_type == "dial":
+            try:
+                self.device.dial(action.number)
+            except Exception as exc:
+                return {
+                    "status": "error",
+                    "action": action_type,
+                    "number": action.number,
+                    "error": str(exc),
+                }
+
+            return {
+                "status": "success",
+                "action": action_type,
+                "number": action.number,
+            }
         if action_type == "home":
-            self.device.home()
-            return {"status": "success", "action": action_type}
+            try:
+                self.device.home()
+            except Exception as exc:
+                return {
+                    "status": "error",
+                    "action": action_type,
+                    "error": str(exc),
+                }
+
+            return {
+                "status": "success",
+                "action": action_type,
+            }
         if action_type == "back":
-            self.device.back()
-            return {"status": "success", "action": action_type}
+            try:
+                self.device.back()
+            except Exception as exc:
+                return {
+                    "status": "error",
+                    "action": action_type,
+                    "error": str(exc),
+                }
+
+            return {
+                "status": "success",
+                "action": action_type,
+            }
         if action_type == "screenshot":
             self.device.screenshot()
             return {"status": "success", "action": action_type}

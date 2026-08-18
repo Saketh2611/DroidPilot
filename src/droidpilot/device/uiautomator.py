@@ -4,6 +4,7 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from typing import Any
+import time
 
 import uiautomator2 as u2
 
@@ -238,20 +239,52 @@ class UIAutomatorDevice(AndroidDevice):
         device = self._ensure_connected()
         device.press(key)
         return {"status": "success", "key": key}
+    
+    def find_calculator_package(self) -> str | None:
+        packages = self.adb.shell(
+            "pm list packages"
+        )
+
+        if isinstance(packages, bytes):
+            packages = packages.decode("utf-8", errors="ignore")
+
+        for line in str(packages).splitlines():
+            package = line.strip().replace("package:", "")
+
+            if "calculator" in package.lower():
+                return package
+
+        return None
 
     def launch_app(self, package: str) -> dict[str, Any]:
         device = self._ensure_connected()
+
         device.app_start(package)
-        return {"status": "success", "package": package}
+
+        time.sleep(0.8)
+
+        current = self.current_package()
+
+        if current != package:
+            raise RuntimeError(
+                f"Failed to launch {package}; "
+                f"current foreground package is {current!r}"
+            )
+
+        return {
+            "status": "success",
+            "package": package,
+            "current_package": current,
+        }
 
     def home(self) -> dict[str, Any]:
         device = self._ensure_connected()
-        device.press.home()
+        device.press("home")
         return {"status": "success"}
 
     def back(self) -> dict[str, Any]:
         device = self._ensure_connected()
-        device.press.back()
+        device.press("back")
         return {"status": "success"}
 
     def current_package(self) -> str | None:
@@ -277,5 +310,21 @@ class UIAutomatorDevice(AndroidDevice):
             "screenshot": self.screenshot(),
             "ui_elements": self.inspect(),
             "current_package": self.current_package(),
+            "calculator_package": self.find_calculator_package(),
             "device_info": self.device_info(),
+        }
+        
+    def dial(self, number: str) -> dict[str, Any]:
+        number = re.sub(r"[^\d+]", "", number)
+
+        if not number:
+            raise ValueError("Invalid phone number")
+
+        self.adb.shell(
+            f'am start -a android.intent.action.DIAL -d "tel:{number}"'
+        )
+
+        return {
+            "status": "success",
+            "number": number,
         }

@@ -11,6 +11,7 @@ Return ONLY one JSON object for the next single step. No markdown, no prose, no 
 
 Allowed actions:
 {"type":"launch_app","package":"<android package name>"}
+{"type":"dial","number":"<phone number>"}
 {"type":"tap","element_id":<id from ui_elements>}
 {"type":"tap","target":{"text":"<visible text>"}}
 {"type":"tap","target":{"resource_id":"<id>"}}
@@ -33,10 +34,11 @@ Rules:
 6. When the user goal is fully achieved, return {"type":"done","reason":"..."}.
 7. If the UI is loading or transitioning, return wait.
 8. Never invent UI text or element_ids that are not present.
+9. For requests to dial a phone number, use the dial action directly instead of tapping the dialer keypad.
 
 Common packages (use when relevant; device may differ):
 - Chrome: com.android.chrome
-- Calculator: com.google.android.calculator or com.android.calculator2 or com.coloros.calculator
+- Calculator: find it
 - Settings: com.android.settings
 - Messages: com.google.android.apps.messaging
 - Camera: com.android.camera / com.android.camera2

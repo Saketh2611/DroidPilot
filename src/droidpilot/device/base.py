@@ -52,6 +52,10 @@ class AndroidDevice(ABC):
     @abstractmethod
     def launch_app(self, package: str) -> dict[str, Any]:
         ...
+        
+    @abstractmethod
+    def dial(self, number: str) -> dict[str, Any]:
+        ...
 
     @abstractmethod
     def home(self) -> dict[str, Any]:

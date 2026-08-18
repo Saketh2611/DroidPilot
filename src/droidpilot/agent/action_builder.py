@@ -5,6 +5,7 @@ from typing import Any
 from ..actions.models import (
     ActionModel,
     BackAction,
+    DialAction,
     DoneAction,
     HomeAction,
     LaunchAppAction,
@@ -26,6 +27,11 @@ def build_action_from_llm(data: dict[str, Any]) -> ActionModel:
     action_type = normalized.get("type")
     if action_type in {"done", "complete", "completed", "finish", "finished"}:
         return DoneAction(reason=str(normalized.get("reason") or "goal completed"))
+    if action_type == "dial":
+        number = normalized.get("number")
+        if not number:
+            raise ValueError("dial requires number")
+        return DialAction(number=str(number))
     if action_type == "launch_app":
         package = normalized.get("package") or normalized.get("app")
         if not package:

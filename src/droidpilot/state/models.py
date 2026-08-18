@@ -20,4 +20,5 @@ class DeviceState(BaseModel):
     screenshot: str | None = None
     ui_elements: list[UIElement] = Field(default_factory=list)
     current_package: str | None = None
+    calculator_package: str | None = None
     device_info: dict[str, Any] = Field(default_factory=dict)

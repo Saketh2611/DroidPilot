@@ -17,16 +17,52 @@ class MockAgent(Agent):
                 "com.google.android.calculator",
                 "com.android.calculator2",
                 "com.coloros.calculator",
+                "com.vivo.calculator",
                 "com.sec.android.app.popupcalculator",
             }
+
             if package not in calc_packages and "calculator" not in package:
-                return LaunchAppAction(package="com.google.android.calculator")
-            for element in state.ui_elements:
-                label = (element.text or element.description or "").strip()
-                if label and label in {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "+", "-", "×", "÷", "=", "."}:
-                    if any(token in lowered for token in (label.lower(),)):
-                        return TapAction(element_id=element.element_id)
-            return DoneAction(reason="Calculator is open")
+                calculator_package = getattr(state, "calculator_package", None)
+
+                if package not in calc_packages and "calculator" not in package:
+                    if calculator_package is None:
+                        return DoneAction(
+                            reason="No calculator application found on device"
+                        )
+
+                    return LaunchAppAction(
+                        package=calculator_package
+                    )
+                
+            recent = history or []
+
+            calculator_actions = [
+                item.get("action", {})
+                for item in recent
+                if item.get("action")
+            ]
+
+            labels_pressed = []
+
+            for action in calculator_actions:
+                target = action.get("target") or {}
+
+                if isinstance(target, dict):
+                    text = target.get("text")
+                    if text:
+                        labels_pressed.append(str(text))
+
+            sequence = ["1", "+", "2", "+", "3", "+", "4", "+", "5", "+", "6", "+", "7", "+", "8", "+", "9", "="]
+
+            for expected in sequence:
+                if expected not in labels_pressed:
+                    for element in state.ui_elements:
+                        label = (element.text or element.description or "").strip()
+
+                        if label == expected:
+                            return TapAction(element_id=element.element_id)
+
+            return DoneAction(reason="Calculator expression completed")
 
         if "settings" in lowered:
             if "settings" not in package:

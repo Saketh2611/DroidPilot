@@ -25,6 +25,7 @@ class ActionModel(BaseModel):
             "scroll",
             "press",
             "launch_app",
+            "dial",
             "home",
             "back",
             "screenshot",
@@ -73,7 +74,10 @@ class PressAction(ActionModel):
 class LaunchAppAction(ActionModel):
     type: Literal["launch_app"] = "launch_app"
     package: str = Field(..., min_length=1)
-
+    
+class DialAction(ActionModel):
+    type: Literal["dial"] = "dial"
+    number: str = Field(..., min_length=3)
 
 class HomeAction(ActionModel):
     type: Literal["home"] = "home"
@@ -104,6 +108,7 @@ ACTION_MODELS = {
     "scroll": ScrollAction,
     "press": PressAction,
     "launch_app": LaunchAppAction,
+    "dial": DialAction,
     "home": HomeAction,
     "back": BackAction,
     "screenshot": ScreenshotAction,
